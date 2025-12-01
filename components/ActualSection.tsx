@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PlannedItem, ActualItem } from '../types';
 import { CURRENCY_FORMATTER, generateId, formatDate } from '../constants';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
-import { Plus, Trash2, Receipt, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Receipt, Edit2, ShoppingBag, Zap, ArrowLeft } from 'lucide-react';
 
 interface ActualSectionProps {
   items: ActualItem[];
@@ -14,6 +14,8 @@ interface ActualSectionProps {
   onUpdatePlannedItem: (item: PlannedItem) => void;
 }
 
+type Mode = 'list' | 'select-type' | 'pick-plan' | 'form';
+
 export const ActualSection: React.FC<ActualSectionProps> = ({ 
   items, 
   plannedItems,
@@ -22,8 +24,10 @@ export const ActualSection: React.FC<ActualSectionProps> = ({
   onUpdateActualItem,
   onUpdatePlannedItem
 }) => {
-  const [isAdding, setIsAdding] = useState(false);
+  const [mode, setMode] = useState<Mode>('list');
   const [editingItem, setEditingItem] = useState<ActualItem | null>(null);
+  
+  // Form State
   const [newItem, setNewItem] = useState<Partial<ActualItem>>({
     name: '',
     quantity: 1,
@@ -31,6 +35,17 @@ export const ActualSection: React.FC<ActualSectionProps> = ({
     date: new Date().toISOString().split('T')[0],
     plannedItemId: ''
   });
+
+  // Derived state for auto-calculation
+  const selectedPlannedItem = plannedItems.find(p => p.id === newItem.plannedItemId);
+
+  // Auto-calculate cost when quantity changes IF linked to a plan
+  useEffect(() => {
+    if (selectedPlannedItem && newItem.quantity) {
+      const calculatedCost = selectedPlannedItem.pricePerUnit * newItem.quantity;
+      setNewItem(prev => ({ ...prev, totalCost: calculatedCost }));
+    }
+  }, [newItem.quantity, selectedPlannedItem]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,25 +61,19 @@ export const ActualSection: React.FC<ActualSectionProps> = ({
 
       if (editingItem) {
         onUpdateActualItem(itemData);
-        setEditingItem(null);
       } else {
         onAddActualItem(itemData);
-        
-        // If linked to a planned item, update its purchased quantity
-        if (newItem.plannedItemId) {
-          const plannedItem = plannedItems.find(p => p.id === newItem.plannedItemId);
-          if (plannedItem) {
-            onUpdatePlannedItem({
-              ...plannedItem,
-              purchasedQuantity: plannedItem.purchasedQuantity + (newItem.quantity || 1)
-            });
-          }
-        }
+        // Trigger update logic is handled in App.tsx now via Optimistic UI
       }
 
-      setNewItem({ name: '', quantity: 1, totalCost: 0, date: new Date().toISOString().split('T')[0], plannedItemId: '' });
-      setIsAdding(false);
+      resetForm();
     }
+  };
+
+  const resetForm = () => {
+    setNewItem({ name: '', quantity: 1, totalCost: 0, date: new Date().toISOString().split('T')[0], plannedItemId: '' });
+    setEditingItem(null);
+    setMode('list');
   };
 
   const startEditing = (item: ActualItem) => {
@@ -76,53 +85,110 @@ export const ActualSection: React.FC<ActualSectionProps> = ({
       date: item.date,
       plannedItemId: item.plannedItemId || ''
     });
-    setIsAdding(true);
+    setMode('form');
   };
 
-  const cancelEdit = () => {
-    setIsAdding(false);
-    setEditingItem(null);
-    setNewItem({ name: '', quantity: 1, totalCost: 0, date: new Date().toISOString().split('T')[0], plannedItemId: '' });
-  };
-
-  const handlePlannedItemSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedId = e.target.value;
-    const selectedPlannedItem = plannedItems.find(p => p.id === selectedId);
-    
+  const handlePickPlan = (plan: PlannedItem) => {
     setNewItem(prev => ({
       ...prev,
-      plannedItemId: selectedId,
-      name: selectedPlannedItem ? selectedPlannedItem.name : prev.name
+      plannedItemId: plan.id,
+      name: plan.name,
+      quantity: 1, // Default to 1
+      totalCost: plan.pricePerUnit // Default to 1 unit cost
     }));
+    setMode('form');
+  };
+
+  const handleQuickAdd = () => {
+    setNewItem(prev => ({ ...prev, plannedItemId: '', name: '' }));
+    setMode('form');
   };
 
   const sortedItems = [...items].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-slate-800">Spending Log</h2>
-        <Button onClick={() => { setIsAdding(!isAdding); setEditingItem(null); setNewItem({ name: '', quantity: 1, totalCost: 0, date: new Date().toISOString().split('T')[0], plannedItemId: '' }); }} size="sm">
-          <Plus size={16} className="mr-2" /> Log Expense
-        </Button>
+        {mode === 'list' && (
+          <Button onClick={() => setMode('select-type')} size="sm">
+            <Plus size={16} className="mr-2" /> Log Expense
+          </Button>
+        )}
       </div>
 
-      {isAdding && (
+      {/* Mode: Select Type */}
+      {mode === 'select-type' && (
+        <Card className="p-6 bg-slate-50 border-blue-100 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-semibold text-slate-700">How do you want to add this?</h3>
+            <button onClick={resetForm} className="text-slate-400 hover:text-slate-600"><ArrowLeft size={20} /></button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button 
+              onClick={() => setMode('pick-plan')}
+              className="flex flex-col items-center p-6 bg-white border-2 border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group"
+            >
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <ShoppingBag size={24} />
+              </div>
+              <span className="font-bold text-slate-700">Pick from Plan</span>
+              <span className="text-xs text-slate-500 mt-1">Select an item you planned to buy</span>
+            </button>
+
+            <button 
+              onClick={handleQuickAdd}
+              className="flex flex-col items-center p-6 bg-white border-2 border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+            >
+              <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <Zap size={24} />
+              </div>
+              <span className="font-bold text-slate-700">Quick Add</span>
+              <span className="text-xs text-slate-500 mt-1">Log an unplanned expense</span>
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Mode: Pick Plan */}
+      {mode === 'pick-plan' && (
         <Card className="p-4 bg-slate-50 border-blue-100">
+          <div className="flex items-center gap-2 mb-4">
+            <button onClick={() => setMode('select-type')} className="p-1 hover:bg-slate-200 rounded"><ArrowLeft size={16} /></button>
+            <h3 className="font-semibold text-slate-700">Select a Planned Item</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+            {plannedItems.length === 0 ? (
+              <p className="col-span-full text-center text-slate-400 py-4">No planned items found.</p>
+            ) : (
+              plannedItems.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => handlePickPlan(p)}
+                  className="text-left p-3 bg-white border border-slate-200 rounded-lg hover:border-emerald-500 hover:shadow-md transition-all"
+                >
+                  <div className="font-medium text-slate-800">{p.name}</div>
+                  <div className="text-xs text-slate-500 flex justify-between mt-1">
+                    <span>Qty: {p.targetQuantity - p.purchasedQuantity} left</span>
+                    <span>{CURRENCY_FORMATTER.format(p.pricePerUnit)}/ea</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Mode: Form (Add/Edit) */}
+      {mode === 'form' && (
+        <Card className="p-4 bg-slate-50 border-blue-100">
+          <div className="flex items-center gap-2 mb-4">
+             {!editingItem && <button onClick={() => setMode('select-type')} className="p-1 hover:bg-slate-200 rounded"><ArrowLeft size={16} /></button>}
+             <h3 className="font-semibold text-slate-700">{editingItem ? 'Edit Expense' : (newItem.plannedItemId ? 'Log Planned Expense' : 'Log Unplanned Expense')}</h3>
+          </div>
+          
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
-            <div className="lg:col-span-2">
-              <label className="block text-xs font-medium text-slate-500 mb-1">Link to Plan (Optional)</label>
-              <select
-                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                value={newItem.plannedItemId || ''}
-                onChange={handlePlannedItemSelect}
-              >
-                <option value="">-- Select Planned Item --</option>
-                {plannedItems.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
             <div className="lg:col-span-2">
               <label className="block text-xs font-medium text-slate-500 mb-1">Item Name</label>
               <input
@@ -132,6 +198,7 @@ export const ActualSection: React.FC<ActualSectionProps> = ({
                 placeholder="e.g. Coffee"
                 value={newItem.name}
                 onChange={e => setNewItem({ ...newItem, name: e.target.value })}
+                readOnly={!!newItem.plannedItemId} // Read-only if linked
               />
             </div>
             <div>
@@ -145,7 +212,18 @@ export const ActualSection: React.FC<ActualSectionProps> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Total Cost</label>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Quantity</label>
+              <input
+                type="number"
+                min="1"
+                required
+                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                value={newItem.quantity}
+                onChange={e => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Total Cost {selectedPlannedItem && <span className="text-emerald-600 text-[10px]">(Auto)</span>}</label>
               <input
                 type="number"
                 min="0"
@@ -157,15 +235,16 @@ export const ActualSection: React.FC<ActualSectionProps> = ({
               />
             </div>
             <div className="flex gap-2 lg:col-span-6">
-               <Button type="submit" className="flex-1">{editingItem ? 'Update' : 'Add'}</Button>
-               <Button type="button" variant="secondary" onClick={cancelEdit}>Cancel</Button>
+               <Button type="submit" className="flex-1">{editingItem ? 'Update' : 'Save Expense'}</Button>
+               <Button type="button" variant="secondary" onClick={resetForm}>Cancel</Button>
             </div>
           </form>
         </Card>
       )}
 
+      {/* List */}
       <div className="space-y-3">
-        {items.length === 0 && !isAdding && (
+        {items.length === 0 && mode === 'list' && (
           <div className="text-center py-10 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
             <Receipt className="w-12 h-12 mx-auto mb-2 opacity-20" />
             <p>No expenses logged yet.</p>
@@ -179,7 +258,10 @@ export const ActualSection: React.FC<ActualSectionProps> = ({
                 {new Date(item.date).getDate()}
               </div>
               <div>
-                <h4 className="font-medium text-slate-800">{item.name}</h4>
+                <h4 className="font-medium text-slate-800 flex items-center gap-2">
+                  {item.name}
+                  {item.plannedItemId && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] rounded-full">Planned</span>}
+                </h4>
                 <p className="text-xs text-slate-500">{formatDate(item.date)} • Qty: {item.quantity}</p>
               </div>
             </div>
