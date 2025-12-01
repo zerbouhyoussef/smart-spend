@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GoogleGenAI } from "@google/genai";
+import ReactMarkdown from 'react-markdown';
 import { AppState } from '../types';
 import { CURRENCY_FORMATTER } from '../constants';
 import { Button } from './ui/Button';
@@ -31,16 +32,21 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ state }) => {
       const ai = new GoogleGenAI({ apiKey });
       
       const prompt = `
-        You are a financial advisor. Analyze the following monthly spending data and give me 3 short, actionable tips or observations.
-        Be encouraging but realistic. Format the output as a simple Markdown list.
+        You are a professional financial advisor. Analyze the monthly spending data below.
         
-        Budget: ${CURRENCY_FORMATTER.format(state.budget)}
+        **Goal:** Provide 3 concise, high-impact observations or actionable tips.
+        **Tone:** Professional, encouraging, and direct. Avoid robotic phrases like "Here is an analysis".
+        **Format:** Use Markdown. Use bolding for key points. Use bullet points.
         
-        Planned Items:
-        ${state.plannedItems.map(i => `- ${i.name}: Plan ${i.targetQuantity}, Bought ${i.purchasedQuantity}. Cost/Unit: ${i.pricePerUnit}`).join('\n')}
+        **Financial Data:**
+        - **Total Budget:** ${CURRENCY_FORMATTER.format(state.budget)}
+        - **Total Spent:** ${CURRENCY_FORMATTER.format(state.actualItems.reduce((acc, i) => acc + i.totalCost, 0))}
         
-        Actual Spending Log (Total: ${CURRENCY_FORMATTER.format(state.actualItems.reduce((acc, i) => acc + i.totalCost, 0))}):
-        ${state.actualItems.map(i => `- ${i.name}: Cost ${i.totalCost}`).join('\n')}
+        **Planned Items:**
+        ${state.plannedItems.map(i => `- ${i.name}: Planned ${i.targetQuantity}, Bought ${i.purchasedQuantity} @ ${CURRENCY_FORMATTER.format(i.pricePerUnit)}/unit`).join('\n')}
+        
+        **Recent Spending:**
+        ${state.actualItems.slice(0, 10).map(i => `- ${i.date}: ${i.name} (${CURRENCY_FORMATTER.format(i.totalCost)})`).join('\n')}
       `;
 
       const response = await ai.models.generateContent({
@@ -82,13 +88,11 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ state }) => {
       )}
 
       {advice && (
-        <Card className="p-6 bg-purple-50 border border-purple-100">
-          <div className="prose prose-sm prose-purple max-w-none">
-            <h3 className="flex items-center gap-2 font-bold text-purple-800 text-lg mb-4">
-              <MessageSquare className="w-5 h-5" /> Advisor Insights
-            </h3>
-            <div className="text-slate-700 whitespace-pre-wrap leading-relaxed">
-              {advice}
+        <Card className="p-6 bg-purple-50 border border-purple-100 shadow-sm">
+          <div className="flex items-start gap-3">
+            <MessageSquare className="w-6 h-6 text-purple-600 mt-1 flex-shrink-0" />
+            <div className="prose prose-sm prose-purple max-w-none text-slate-700">
+              <ReactMarkdown>{advice}</ReactMarkdown>
             </div>
           </div>
         </Card>
