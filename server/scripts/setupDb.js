@@ -1,15 +1,14 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import pg from 'pg';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import path from 'path';
 
-// Load env vars
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+// Load env vars from server root (parent of scripts)
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 
 const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL.replace('?sslmode=require', '');
+const connectionString = process.env.DATABASE_URL ? process.env.DATABASE_URL.replace('?sslmode=require', '') : '';
 
 const pool = new Pool({
   connectionString,

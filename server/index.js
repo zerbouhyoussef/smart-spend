@@ -8,7 +8,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import NodeCache from 'node-cache';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+dotenv.config(); // Load .env from current directory
 
 const app = express();
 const port = 3001;
